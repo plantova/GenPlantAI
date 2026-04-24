@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Automated Plant Layout Planner</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            transition: background-color 0.3s ease;
+        }
+        #container3d {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+        .info-panel {
+            max-height: 95vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #4a5568 #1a202c;
+            transition: all 0.3s ease;
+        }
+        #drawingModal {
+            display: none;
+            backdrop-filter: blur(8px);
+        }
+        canvas#planCanvas {
+            background-color: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+        
+        /* Custom styles for theme transitions */
+        .theme-transition {
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
+        }
+    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body id="appBody" class="bg-gray-900 text-white">
+
+    <div id="container3d" class="absolute top-0 left-0"></div>
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="absolute top-4 left-4 bg-gray-800 bg-opacity-90 p-5 rounded-lg shadow-2xl w-80 info-panel border border-gray-700 z-10 theme-transition">
+        <div class="flex justify-between items-start mb-2">
+            <h1 class="text-xl font-bold text-cyan-400">Plant Layout Planner</h1>
+            <button id="themeToggle" class="p-2 rounded-lg bg-gray-700 hover:bg-gray-600 transition-colors border border-gray-600 shadow-sm" title="Toggle Light/Dark Mode">
+                <svg id="themeIcon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-yellow-400"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+            </button>
+        </div>
+        
+        <!-- Plot Configuration -->
+        <div class="mb-6 pb-4 border-b border-gray-700 theme-transition" id="plotConfigSection">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-3">Plot Configuration</h2>
+            <div class="grid grid-cols-2 gap-3 mb-4">
+                <div>
+                    <label class="block text-xs font-medium text-gray-400">Width (m)</label>
+                    <input type="number" id="plotWidth" value="60" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-1.5 px-3 text-sm focus:ring-cyan-500 border focus:border-cyan-500 outline-none theme-transition">
+                </div>
+                <div>
+                    <label class="block text-xs font-medium text-gray-400">Depth (m)</label>
+                    <input type="number" id="plotDepth" value="50" class="mt-1 block w-full bg-gray-700 border-gray-600 rounded-md py-1.5 px-3 text-sm focus:ring-cyan-500 border focus:border-cyan-500 outline-none theme-transition">
+                </div>
+            </div>
+            <div class="space-y-2">
+                <button id="generateBtn" class="w-full bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-4 rounded transition-all shadow-md active:scale-95 text-sm">
+                    Generate Auto Layout
+                </button>
+                <button id="openDrawingBtn" class="w-full bg-emerald-700 hover:bg-emerald-600 text-white font-bold py-2 px-4 rounded transition-all shadow-md active:scale-95 text-sm flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
+                    Generate 2D Drawing
+                </button>
+            </div>
+        </div>
+
+        <!-- Selection & Properties -->
+        <div id="propertyPanel" class="hidden animate-in fade-in duration-300">
+            <h2 class="text-sm font-semibold uppercase tracking-wider text-cyan-400 mb-3">Item Properties</h2>
+            <div id="itemPropCard" class="bg-gray-900 bg-opacity-50 p-3 rounded-md mb-4 border border-gray-700 theme-transition">
+                <p id="propName" class="font-bold text-lg mb-1 truncate">Equipment Name</p>
+                <p id="propType" class="text-xs text-gray-400 italic mb-3">Type: Vessel</p>
+                
+                <div class="space-y-3">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Position X (m)</label>
+                        <input type="range" id="posX" min="-50" max="50" step="0.5" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Position Z (m)</label>
+                        <input type="range" id="posZ" min="-50" max="50" step="0.5" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-400 mb-1">Rotation Y (deg)</label>
+                        <input type="range" id="rotY" min="0" max="360" step="15" class="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-cyan-500">
+                    </div>
+                </div>
+
+                <button id="deleteBtn" class="mt-4 w-full bg-red-900 bg-opacity-30 border border-red-700 hover:bg-red-700 hover:text-white text-red-400 font-bold py-1.5 px-4 rounded transition-all text-xs">
+                    Remove Equipment
+                </button>
+            </div>
+        </div>
+
+        <div id="selectionHint" class="text-center py-4 text-gray-500 text-xs italic">
+            Click on equipment in 3D to select and modify.
+        </div>
+    </div>
+
+    <!-- 2D Drawing Modal -->
+    <div id="drawingModal" class="fixed inset-0 z-50 flex items-center justify-center p-8 bg-black bg-opacity-80">
+        <div class="bg-gray-100 rounded-xl overflow-hidden flex flex-col max-w-5xl w-full h-full border border-white">
+            <div class="bg-white border-b border-gray-300 p-4 flex justify-between items-center text-gray-900">
+                <div>
+                    <h2 class="text-lg font-bold">2D Plan View Drawing</h2>
+                    <p id="drawingScaleLabel" class="text-xs text-gray-500">Scale 1:100 (Schematic)</p>
+                </div>
+                <div class="flex gap-2">
+                    <button id="downloadDrawingBtn" class="bg-gray-800 text-white text-sm px-4 py-2 rounded hover:bg-black transition-colors">Download PNG</button>
+                    <button id="closeDrawingBtn" class="bg-red-600 text-white text-sm px-4 py-2 rounded hover:bg-red-700 transition-colors">Close</button>
+                </div>
+            </div>
+            <div id="canvasContainer" class="flex-1 overflow-auto bg-gray-200 p-8 flex items-center justify-center">
+                <canvas id="planCanvas"></canvas>
+            </div>
+            <div class="bg-white p-3 border-t border-gray-300 text-[10px] text-gray-400 text-center uppercase tracking-widest">
+                Automated Plant Layout Planner - Engineering Draft
+            </div>
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+        // --- STATE MANAGEMENT ---
+        let scene, camera, renderer, controls, raycaster, mouse;
+        let ambientLight, dirLight;
+        let plotMesh, equipmentGroup;
+        let selectedObject = null;
+        let isDarkMode = true;
+
+        // --- DOM ELEMENTS ---
+        const plotWidthInput = document.getElementById('plotWidth');
+        const plotDepthInput = document.getElementById('plotDepth');
+        const generateBtn = document.getElementById('generateBtn');
+        const propertyPanel = document.getElementById('propertyPanel');
+        const selectionHint = document.getElementById('selectionHint');
+        const propName = document.getElementById('propName');
+        const propType = document.getElementById('propType');
+        const posXInput = document.getElementById('posX');
+        const posZInput = document.getElementById('posZ');
+        const rotYInput = document.getElementById('rotY');
+        const deleteBtn = document.getElementById('deleteBtn');
+        const themeToggle = document.getElementById('themeToggle');
+        const appBody = document.getElementById('appBody');
+        const sidebar = document.getElementById('sidebar');
+        
+        const openDrawingBtn = document.getElementById('openDrawingBtn');
+        const closeDrawingBtn = document.getElementById('closeDrawingBtn');
+        const drawingModal = document.getElementById('drawingModal');
+        const planCanvas = document.getElementById('planCanvas');
+        const downloadDrawingBtn = document.getElementById('downloadDrawingBtn');
+
+        // --- UPDATED COMPONENT LIBRARY ---
+        const equipmentLibrary = [
+            { name: 'Reformer RF-101', type: 'Reformer', dimensions: { w: 12, h: 20, d: 15 }, clearance: 6, color: 0x555555 },
+            { name: 'Frac-Column C-101', type: 'Column', dimensions: { w: 5, h: 45, d: 5 }, clearance: 4, color: 0x94a3b8 },
+            { name: 'Reactor R-101', type: 'Reactor', dimensions: { w: 8, h: 18, d: 8 }, clearance: 5, color: 0xd946ef },
+            { name: 'Vessel V-101', type: 'VerticalVessel', dimensions: { w: 6, h: 14, d: 6 }, clearance: 3, color: 0x4ecdc4 },
+            { name: 'Vessel V-102 (H)', type: 'HorizontalVessel', dimensions: { w: 5, h: 6, d: 12 }, clearance: 3, color: 0x4ecdc4 },
+            { name: 'Exchanger E-101', type: 'Exchanger', dimensions: { w: 3, h: 3.5, d: 10 }, clearance: 4, color: 0xffd166 },
+            { name: 'Exchanger E-102', type: 'Exchanger', dimensions: { w: 3, h: 3.5, d: 10 }, clearance: 4, color: 0xffd166 },
+            { name: 'Main Comp K-101', type: 'Compressor', dimensions: { w: 7, h: 5, d: 8 }, clearance: 4, color: 0x1e40af },
+            { name: 'Pump P-101A', type: 'Pump', dimensions: { w: 2.5, h: 2, d: 4.5 }, clearance: 2, color: 0x118ab2 },
+            { name: 'Pump P-101B', type: 'Pump', dimensions: { w: 2.5, h: 2, d: 4.5 }, clearance: 2, color: 0x118ab2 },
+            { name: 'Pump P-102A', type: 'Pump', dimensions: { w: 2.5, h: 2, d: 4.5 }, clearance: 2, color: 0x118ab2 },
+            { name: 'Pump P-102B', type: 'Pump', dimensions: { w: 2.5, h: 2, d: 4.5 }, clearance: 2, color: 0x118ab2 },
+        ];
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a202c);
+
+            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
+            camera.position.set(100, 100, 100);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('container3d').appendChild(renderer.domElement);
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
+            scene.add(ambientLight);
+            dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+            dirLight.position.set(50, 150, 50);
+            dirLight.castShadow = true;
+            dirLight.shadow.camera.left = -100;
+            dirLight.shadow.camera.right = 100;
+            dirLight.shadow.camera.top = 100;
+            dirLight.shadow.camera.bottom = -100;
+            scene.add(dirLight);
+
+            equipmentGroup = new THREE.Group();
+            scene.add(equipmentGroup);
+
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            window.addEventListener('resize', onWindowResize);
+            window.addEventListener('mousedown', onMouseDown);
+            generateBtn.addEventListener('click', generateLayout);
+            themeToggle.addEventListener('click', toggleTheme);
+            
+            posXInput.addEventListener('input', updateSelectedItem);
+            posZInput.addEventListener('input', updateSelectedItem);
+            rotYInput.addEventListener('input', updateSelectedItem);
+            deleteBtn.addEventListener('click', deleteSelectedItem);
+
+            openDrawingBtn.addEventListener('click', generate2DDrawing);
+            closeDrawingBtn.addEventListener('click', () => drawingModal.style.display = 'none');
+            downloadDrawingBtn.addEventListener('click', downloadCanvas);
+
+            generateLayout();
+            animate();
+        }
+
+        function toggleTheme() {
+            isDarkMode = !isDarkMode;
+            
+            const themeIcon = document.getElementById('themeIcon');
+            const plotConfigSection = document.getElementById('plotConfigSection');
+            const itemPropCard = document.getElementById('itemPropCard');
+            const inputs = sidebar.querySelectorAll('input[type="number"]');
+
+            if (isDarkMode) {
+                // UI Updates
+                appBody.classList.remove('bg-gray-100', 'text-gray-900');
+                appBody.classList.add('bg-gray-900', 'text-white');
+                sidebar.classList.remove('bg-white', 'border-gray-300');
+                sidebar.classList.add('bg-gray-800', 'border-gray-700');
+                plotConfigSection.classList.remove('border-gray-300');
+                plotConfigSection.classList.add('border-gray-700');
+                itemPropCard.classList.remove('bg-gray-200', 'border-gray-300');
+                itemPropCard.classList.add('bg-gray-900', 'border-gray-700');
+                
+                inputs.forEach(input => {
+                    input.classList.remove('bg-gray-100', 'border-gray-300', 'text-gray-900');
+                    input.classList.add('bg-gray-700', 'border-gray-600', 'text-white');
+                });
+
+                themeToggle.classList.remove('bg-gray-200');
+                themeToggle.classList.add('bg-gray-700');
+                themeIcon.innerHTML = `<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>`;
+                themeIcon.classList.remove('text-gray-600');
+                themeIcon.classList.add('text-yellow-400');
+
+                // 3D Updates
+                scene.background.set(0x1a202c);
+                if (plotMesh) plotMesh.material.color.set(0x2d3748);
+                ambientLight.intensity = 0.5;
+                dirLight.intensity = 1.0;
+
+            } else {
+                // UI Updates
+                appBody.classList.remove('bg-gray-900', 'text-white');
+                appBody.classList.add('bg-gray-100', 'text-gray-900');
+                sidebar.classList.remove('bg-gray-800', 'border-gray-700');
+                sidebar.classList.add('bg-white', 'border-gray-300');
+                plotConfigSection.classList.remove('border-gray-700');
+                plotConfigSection.classList.add('border-gray-300');
+                itemPropCard.classList.remove('bg-gray-900', 'border-gray-700');
+                itemPropCard.classList.add('bg-gray-200', 'border-gray-300');
+
+                inputs.forEach(input => {
+                    input.classList.remove('bg-gray-700', 'border-gray-600', 'text-white');
+                    input.classList.add('bg-gray-100', 'border-gray-300', 'text-gray-900');
+                });
+
+                themeToggle.classList.remove('bg-gray-700');
+                themeToggle.classList.add('bg-gray-200');
+                themeIcon.innerHTML = `<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>`;
+                themeIcon.classList.remove('text-yellow-400');
+                themeIcon.classList.add('text-gray-600');
+
+                // 3D Updates
+                scene.background.set(0xf3f4f6); // gray-100
+                if (plotMesh) plotMesh.material.color.set(0xe2e8f0); // gray-200
+                ambientLight.intensity = 0.8;
+                dirLight.intensity = 0.6;
+            }
+        }
+
+        // --- ADVANCED GEOMETRY FACTORY ---
+        function createEquipment(item, pos) {
+            const group = new THREE.Group();
+            group.position.copy(pos);
+            group.userData = { ...item };
+
+            const mainMat = new THREE.MeshStandardMaterial({ 
+                color: item.color, 
+                metalness: 0.6, 
+                roughness: 0.3 
+            });
+            const secondaryMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.8 });
+
+            const bodyGroup = new THREE.Group();
+
+            switch(item.type) {
+                case 'Column':
+                    const colGeo = new THREE.CylinderGeometry(item.dimensions.w/2, item.dimensions.w/2, item.dimensions.h, 32);
+                    const colMesh = new THREE.Mesh(colGeo, mainMat);
+                    bodyGroup.add(colMesh);
+                    for(let i=1; i<5; i++) {
+                        const ring = new THREE.Mesh(new THREE.TorusGeometry(item.dimensions.w/2 + 0.2, 0.1, 8, 32), secondaryMat);
+                        ring.rotation.x = Math.PI/2;
+                        ring.position.y = -item.dimensions.h/2 + (item.dimensions.h/5)*i;
+                        bodyGroup.add(ring);
+                    }
+                    break;
+
+                case 'VerticalVessel':
+                    const vBody = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/2, item.dimensions.w/2, item.dimensions.h*0.7, 32), mainMat);
+                    const vTop = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.w/2, 32, 16, 0, Math.PI*2, 0, Math.PI/2), mainMat);
+                    const vBottom = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.w/2, 32, 16, 0, Math.PI*2, Math.PI/2, Math.PI/2), mainMat);
+                    vTop.position.y = item.dimensions.h*0.35;
+                    vBottom.position.y = -item.dimensions.h*0.35;
+                    bodyGroup.add(vBody, vTop, vBottom);
+                    break;
+
+                case 'HorizontalVessel':
+                    const hBody = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.h/3, item.dimensions.h/3, item.dimensions.d*0.7, 32), mainMat);
+                    hBody.rotation.x = Math.PI/2;
+                    const hCap1 = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.h/3, 32, 16, 0, Math.PI*2, 0, Math.PI/2), mainMat);
+                    const hCap2 = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.h/3, 32, 16, 0, Math.PI*2, Math.PI/2, Math.PI/2), mainMat);
+                    hCap1.position.z = item.dimensions.d*0.35; hCap1.rotation.x = -Math.PI/2;
+                    hCap2.position.z = -item.dimensions.d*0.35; hCap2.rotation.x = -Math.PI/2;
+                    const saddle = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w, 1, 1), secondaryMat);
+                    saddle.position.y = -item.dimensions.h/3;
+                    const s1 = saddle.clone(); s1.position.z = item.dimensions.d*0.25;
+                    const s2 = saddle.clone(); s2.position.z = -item.dimensions.d*0.25;
+                    bodyGroup.add(hBody, hCap1, hCap2, s1, s2);
+                    break;
+
+                case 'Exchanger':
+                    const exBody = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/2, item.dimensions.w/2, item.dimensions.d*0.85, 32), mainMat);
+                    exBody.rotation.x = Math.PI/2;
+                    const flange = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/1.8, item.dimensions.w/1.8, 0.5, 32), secondaryMat);
+                    flange.rotation.x = Math.PI/2;
+                    flange.position.z = item.dimensions.d*0.42;
+                    const head = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.w/2, 32, 16, 0, Math.PI*2, 0, Math.PI/2), mainMat);
+                    head.rotation.x = -Math.PI/2; head.position.z = item.dimensions.d*0.45;
+                    bodyGroup.add(exBody, flange, head);
+                    break;
+
+                case 'Pump':
+                    const pBase = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w, 0.4, item.dimensions.d), secondaryMat);
+                    pBase.position.y = -item.dimensions.h/2 + 0.2;
+                    const motor = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/3, item.dimensions.w/3, item.dimensions.d*0.5, 16), mainMat);
+                    motor.rotation.x = Math.PI/2;
+                    motor.position.set(0, 0.2, -item.dimensions.d*0.2);
+                    const casing = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/2.5, item.dimensions.w/2.5, 0.8, 16), mainMat);
+                    casing.rotation.x = Math.PI/2;
+                    casing.position.set(0, 0.2, item.dimensions.d*0.25);
+                    bodyGroup.add(pBase, motor, casing);
+                    break;
+
+                case 'Reformer':
+                    const refBase = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w, item.dimensions.h*0.6, item.dimensions.d), mainMat);
+                    const stack = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/8, item.dimensions.w/8, item.dimensions.h*0.6, 16), secondaryMat);
+                    stack.position.y = item.dimensions.h*0.5;
+                    const s_left = stack.clone(); s_left.position.x = -item.dimensions.w*0.3;
+                    const s_right = stack.clone(); s_right.position.x = item.dimensions.w*0.3;
+                    bodyGroup.add(refBase, s_left, s_right);
+                    break;
+
+                case 'Compressor':
+                    const kBase = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w, 1, item.dimensions.d), secondaryMat);
+                    const kBody = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w*0.8, item.dimensions.h*0.8, item.dimensions.d*0.8), mainMat);
+                    kBody.position.y = 1;
+                    const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 4, 12), secondaryMat);
+                    pipe.position.set(item.dimensions.w*0.4, 2, 0);
+                    bodyGroup.add(kBase, kBody, pipe);
+                    break;
+
+                case 'Reactor':
+                    const rBody = new THREE.Mesh(new THREE.CylinderGeometry(item.dimensions.w/2, item.dimensions.w/2, item.dimensions.h*0.6, 32), mainMat);
+                    const rSphere = new THREE.Mesh(new THREE.SphereGeometry(item.dimensions.w/2, 32, 16), mainMat);
+                    rSphere.position.y = item.dimensions.h*0.3;
+                    const rSphere2 = rSphere.clone(); rSphere2.position.y = -item.dimensions.h*0.3;
+                    bodyGroup.add(rBody, rSphere, rSphere2);
+                    break;
+                
+                default:
+                    const fallback = new THREE.Mesh(new THREE.BoxGeometry(item.dimensions.w, item.dimensions.h, item.dimensions.d), mainMat);
+                    bodyGroup.add(fallback);
+            }
+
+            group.add(bodyGroup);
+
+            const clrGeo = new THREE.BoxGeometry(item.dimensions.w + item.clearance*2, item.dimensions.h, item.dimensions.d + item.clearance*2);
+            const clrMat = new THREE.MeshStandardMaterial({ color: 0xffff00, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false });
+            const clrMesh = new THREE.Mesh(clrGeo, clrMat);
+            group.add(clrMesh);
+
+            equipmentGroup.add(group);
+        }
+
+        // --- IMPROVED 2D DRAWING LOGIC ---
+        function generate2DDrawing() {
+            const w = parseFloat(plotWidthInput.value);
+            const d = parseFloat(plotDepthInput.value);
+            const scale = 12; 
+            const margin = 80;
+            const canvasW = w * scale + margin * 2;
+            const canvasH = d * scale + margin * 2;
+            
+            planCanvas.width = canvasW;
+            planCanvas.height = canvasH;
+            const ctx = planCanvas.getContext('2d');
+            
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvasW, canvasH);
+            
+            ctx.strokeStyle = '#333333';
+            ctx.lineWidth = 4;
+            ctx.strokeRect(margin, margin, w * scale, d * scale);
+            
+            ctx.strokeStyle = '#e5e7eb';
+            ctx.lineWidth = 0.5;
+            for(let x=0; x<=w; x+=5) {
+                ctx.beginPath(); ctx.moveTo(margin + x*scale, margin); ctx.lineTo(margin + x*scale, margin + d*scale); ctx.stroke();
+            }
+            for(let y=0; y<=d; y+=5) {
+                ctx.beginPath(); ctx.moveTo(margin, margin + y*scale); ctx.lineTo(margin + w*scale, margin + y*scale); ctx.stroke();
+            }
+
+            equipmentGroup.children.forEach(group => {
+                const data = group.userData;
+                const pos = group.position;
+                const rot = group.rotation.y;
+                
+                const cx = margin + (pos.x + w/2) * scale;
+                const cy = margin + (pos.z + d/2) * scale;
+                
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.rotate(rot);
+                
+                const clrW = (data.dimensions.w + data.clearance * 2) * scale;
+                const clrD = (data.dimensions.d + data.clearance * 2) * scale;
+                ctx.strokeStyle = '#fbbf24';
+                ctx.setLineDash([5, 5]);
+                ctx.lineWidth = 1;
+                ctx.strokeRect(-clrW/2, -clrD/2, clrW, clrD);
+                
+                ctx.setLineDash([]);
+                ctx.fillStyle = '#' + data.color.toString(16).padStart(6, '0') + '66';
+                ctx.strokeStyle = '#' + data.color.toString(16).padStart(6, '0');
+                ctx.lineWidth = 2;
+
+                const isCircular = ['Column', 'VerticalVessel', 'Reactor'].includes(data.type);
+                
+                if (isCircular) {
+                    const radius = (data.dimensions.w / 2) * scale;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.stroke();
+                    ctx.lineWidth = 0.5;
+                    ctx.beginPath(); ctx.moveTo(-radius, 0); ctx.lineTo(radius, 0); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(0, -radius); ctx.lineTo(0, radius); ctx.stroke();
+                } else {
+                    const ew = data.dimensions.w * scale;
+                    const ed = data.dimensions.d * scale;
+                    ctx.fillRect(-ew/2, -ed/2, ew, ed);
+                    ctx.strokeRect(-ew/2, -ed/2, ew, ed);
+                    
+                    if (data.type === 'HorizontalVessel' || data.type === 'Exchanger') {
+                        ctx.beginPath(); ctx.moveTo(-ew/2, 0); ctx.lineTo(ew/2, 0); ctx.stroke();
+                    }
+                }
+                
+                ctx.restore();
+                
+                ctx.fillStyle = '#111827';
+                ctx.font = 'bold 11px Inter, sans-serif';
+                ctx.textAlign = 'center';
+                const labelY = cy - (Math.max(data.dimensions.w, data.dimensions.d) * scale / 2 + 15);
+                ctx.fillText(data.name, cx, labelY);
+                
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '9px Inter, sans-serif';
+                ctx.fillText(`${pos.x.toFixed(1)}, ${pos.z.toFixed(1)}`, cx, labelY + 12);
+            });
+            
+            ctx.fillStyle = '#111827';
+            ctx.font = 'bold 14px Inter, sans-serif';
+            ctx.textAlign = 'left';
+            ctx.fillText(`PLOT AREA: ${w}m x ${d}m`, margin, margin - 40);
+            ctx.font = '12px Inter, sans-serif';
+            ctx.fillText(`Generated Layout Plan View`, margin, margin - 20);
+
+            drawingModal.style.display = 'flex';
+        }
+
+        function downloadCanvas() {
+            const link = document.createElement('a');
+            link.download = `plant-plan-${Date.now()}.png`;
+            link.href = planCanvas.toDataURL();
+            link.click();
+        }
+
+        function onMouseDown(event) {
+            if (event.target.closest('.info-panel') || event.target.closest('#drawingModal')) return;
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(equipmentGroup.children, true);
+            if (intersects.length > 0) {
+                let object = intersects[0].object;
+                while (object.parent && object.parent !== equipmentGroup) object = object.parent;
+                selectObject(object);
+            } else {
+                deselectObject();
+            }
+        }
+
+        function selectObject(object) {
+            deselectObject();
+            selectedObject = object;
+            object.children[0].children.forEach(c => {
+                if (c.material) {
+                    c.material.emissive = new THREE.Color(0x444444);
+                    c.material.emissiveIntensity = 0.5;
+                }
+            });
+            selectionHint.classList.add('hidden');
+            propertyPanel.classList.remove('hidden');
+            propName.textContent = object.userData.name;
+            propType.textContent = `Type: ${object.userData.type}`;
+            posXInput.value = object.position.x;
+            posZInput.value = object.position.z;
+            rotYInput.value = THREE.MathUtils.radToDeg(object.rotation.y);
+            const w = parseFloat(plotWidthInput.value) / 2;
+            const d = parseFloat(plotDepthInput.value) / 2;
+            posXInput.min = -w; posXInput.max = w;
+            posZInput.min = -d; posZInput.max = d;
+        }
+
+        function deselectObject() {
+            if (selectedObject) {
+                selectedObject.children[0].children.forEach(c => {
+                    if (c.material) c.material.emissive = new THREE.Color(0x000000);
+                });
+            }
+            selectedObject = null;
+            propertyPanel.classList.add('hidden');
+            selectionHint.classList.remove('hidden');
+        }
+
+        function updateSelectedItem() {
+            if (!selectedObject) return;
+            selectedObject.position.x = parseFloat(posXInput.value);
+            selectedObject.position.z = parseFloat(posZInput.value);
+            selectedObject.rotation.y = THREE.MathUtils.degToRad(parseFloat(rotYInput.value));
+        }
+
+        function deleteSelectedItem() {
+            if (!selectedObject) return;
+            equipmentGroup.remove(selectedObject);
+            deselectObject();
+        }
+
+        function generateLayout() {
+            deselectObject();
+            if (plotMesh) scene.remove(plotMesh);
+            equipmentGroup.clear();
+            const w = parseFloat(plotWidthInput.value);
+            const d = parseFloat(plotDepthInput.value);
+            const plotGeo = new THREE.PlaneGeometry(w, d);
+            
+            // Initial plot color based on theme
+            const plotColor = isDarkMode ? 0x2d3748 : 0xe2e8f0;
+            const plotMat = new THREE.MeshStandardMaterial({ color: plotColor });
+            
+            plotMesh = new THREE.Mesh(plotGeo, plotMat);
+            plotMesh.rotation.x = -Math.PI / 2;
+            plotMesh.receiveShadow = true;
+            scene.add(plotMesh);
+
+            const placedBoxes = [];
+            const sortedItems = [...equipmentLibrary].sort((a, b) => (b.dimensions.w * b.dimensions.d) - (a.dimensions.w * a.dimensions.d));
+            
+            sortedItems.forEach(item => {
+                const totalW = item.dimensions.w + item.clearance * 2;
+                const totalD = item.dimensions.d + item.clearance * 2;
+                let placed = false;
+                for (let z = -d/2 + totalD/2; z <= d/2 - totalD/2; z += 2) {
+                    for (let x = -w/2 + totalW/2; x <= w/2 - totalW/2; x += 2) {
+                        const box = new THREE.Box3(new THREE.Vector3(x - totalW/2, 0, z - totalD/2), new THREE.Vector3(x + totalW/2, item.dimensions.h, z + totalD/2));
+                        if (!placedBoxes.some(p => p.intersectsBox(box))) {
+                            createEquipment(item, new THREE.Vector3(x, item.dimensions.h/2, z));
+                            placedBoxes.push(box);
+                            placed = true;
+                            break;
+                        }
+                    }
+                    if (placed) break;
+                }
+            });
+            camera.position.set(w * 0.9, w * 0.9, d * 0.9);
+            controls.target.set(0, 0, 0);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        init();
+    </script>
+</body>
+</html>
